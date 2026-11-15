@@ -50,11 +50,33 @@ async function dashboard() {
 async function products() {
   const { products: rows } = await call('/api/admin/products');
   const out = h('div', {});
+  const keyword = h('input', { placeholder: 'Search CJ products (e.g. pet mat)', id: 'cj-keyword' });
+  const cjOut = h('div', {});
+  const fetchCJ = async () => {
+    try {
+      const r = await call('/api/admin/cj/products?keyword=' + encodeURIComponent(keyword.value.trim()) + '&size=20');
+      mount(cjOut, r.products.length ? table(['CJ product', 'Cost', 'Stock', ''], r.products.map((p) => h('tr', {},
+        h('td', {}, h('div', {}, p.name), h('div', { class: 'small muted' }, p.supplier_product_id)),
+        h('td', {}, money(p.supplier_cost, p.supplier_currency)),
+        h('td', {}, String(p.stock)),
+        h('td', {}, h('button', { class: 'btn btn-green btn-sm', type: 'button', onclick: async () => {
+          try {
+            const imported = await call('/api/admin/products/import-cj', { method: 'POST', body: { keyword: keyword.value.trim(), size: 20 } });
+            mount(cjOut, notice('ok', `Imported ${imported.count} new CJ products as drafts. Open Products below to edit and publish.`));
+            setTimeout(products, 1000);
+          } catch (e) { mount(cjOut, notice('error', e.message)); }
+        } }, 'Import results'))))) : h('p', { class: 'muted' }, 'No CJ products found.'));
+    } catch (e) { mount(cjOut, notice('error', e.message)); }
+  };
   mount(app, h('h1', {}, 'Products'), nav('#/products'), out,
     h('div', { class: 'actions' }, h('a', { class: 'btn btn-green btn-sm', href: '#/products/new' }, 'New product'),
       h('button', { class: 'btn btn-ghost btn-sm', type: 'button', onclick: async () => {
         try { const r = await call('/api/admin/products/sync-all', { method: 'POST' }); mount(out, notice('ok', `Sync finished: ${r.results.map((x) => (x.skipped ? 'skipped' : x.error ? 'error: ' + x.error : x.flagged ? 'flagged' : 'ok')).join(', ') || 'nothing to sync'}`)); setTimeout(products, 1200); }
         catch (e) { mount(out, notice('error', e.message)); } } }, 'Sync all from supplier')),
+    h('div', { class: 'card' }, h('h2', { class: 'small-title' }, 'Find products in CJ'),
+      h('div', { class: 'actions' }, keyword, h('button', { class: 'btn btn-primary btn-sm', type: 'button', onclick: fetchCJ }, 'Fetch from CJ')),
+      h('p', { class: 'small muted' }, 'Fetched products are imported as drafts first. Review shipping cost, description and retail price before publishing.'),
+      cjOut),
     table(['Product', 'Retail price', 'Supplier cost', 'Landed', 'Margin', 'Stock', 'Status', 'Last sync', ''], rows.map((p) => h('tr', {},
       h('td', {}, p.name), h('td', {}, money(p.retail_price, p.currency)), h('td', {}, money(p.supplier_cost, p.supplier_currency)),
       h('td', {}, money(p.landed_cost, p.currency)), h('td', {}, p.economics ? `${p.economics.margin_percent}% (${p.economics.landed_multiple}× landed)` : '—'), h('td', {}, String(p.stock)),
