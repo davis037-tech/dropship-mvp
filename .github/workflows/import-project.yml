@@ -1,0 +1,27 @@
+name: Import project ZIP
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'dropship-mvp.zip'
+permissions:
+  contents: write
+jobs:
+  import:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Extract project
+        run: |
+          rm -rf project
+          unzip -q dropship-mvp.zip
+          cp -a project/. .
+          rm -rf project dropship-mvp.zip
+      - name: Commit project
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git diff --cached --quiet && exit 0
+          git commit -m 'Import dropship MVP project'
+          git push
