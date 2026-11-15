@@ -110,17 +110,45 @@ class CJDropshippingAdapter(SupplierAdapter):
         self._authorize()
         return True
 
+    def list_products(self, keyword: str = "", page: int = 1, size: int = 20,
+                      country_code: str = "") -> list[dict]:
+        """Fetch products from CJ's current V2 catalog search endpoint."""
+        params = {"page": max(1, page), "size": min(max(1, size), 100)}
+        if keyword.strip():
+            params["keyWord"] = keyword.strip()
+        if country_code.strip():
+            params["countryCode"] = country_code.strip().upper()
+        query = "&".join(
+            f"{key}={urllib.parse.quote(str(value))}" for key, value in params.items()
+        )
+        data = self._call("GET", f"/product/listV2?{query}").get("data") or {}
+        if isinstance(data, list):
+            return data
+        for key in ("list", "records", "content", "products"):
+            if isinstance(data.get(key), list):
+                return data[key]
+        return []
+
     def get_product(self, supplier_product_id: str) -> SupplierProduct:
-        data = self._call("POST", "/product/query", {"pid": supplier_product_id}).get("data") or {}
+        # CJ documents Product Query as GET /product/query?pid=...
+        query = urllib.parse.urlencode({"pid": supplier_product_id})
+        data = self._call("GET", f"/product/query?{query}").get("data") or {}
         product = data.get("content", data) if isinstance(data, dict) else {}
         variants = product.get("variants") or product.get("variantList") or []
         variant = variants[0] if variants else {}
         price = _number(variant.get("variantSellPrice") or product.get("sellPrice"))
-        stock = _int(variant.get("variantAvailableInventory") or product.get("availableInventory"))
+        stock = _int(
+            variant.get("variantAvailableInventory")
+            or variant.get("variantStock")
+            or product.get("availableInventory")
+            or product.get("inventory")
+        )
         images = tuple(product.get("productImageSet") or product.get("images") or ())
+        if product.get("bigImage") and product["bigImage"] not in images:
+            images = (product["bigImage"], *images)
         return SupplierProduct(
             supplier_product_id=str(supplier_product_id),
-            title=product.get("productName") or product.get("name") or "",
+            title=product.get("productNameEn") or product.get("productName") or product.get("name") or "",
             url=product.get("productUrl") or "",
             price_minor=round(price * 100),
             currency="USD",
