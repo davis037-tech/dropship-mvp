@@ -123,10 +123,11 @@ class Settings:
     store_currency: str
     max_quantity: int
 
-    supplier_mode: str              # mock | manual | 1688
+    supplier_mode: str              # mock | manual | 1688 | cj
     supplier_1688_api_key: str
     supplier_1688_api_secret: str
     supplier_1688_access_token: str
+    cj_api_key: str
     supplier_check_policy: str      # strict | cache
     stock_cache_max_age_minutes: int
     fulfillment_mode: str           # manual | automatic
@@ -207,6 +208,7 @@ class Settings:
             supplier_1688_api_key=_get(env, "SUPPLIER_1688_API_KEY"),
             supplier_1688_api_secret=_get(env, "SUPPLIER_1688_API_SECRET"),
             supplier_1688_access_token=_get(env, "SUPPLIER_1688_ACCESS_TOKEN"),
+            cj_api_key=_get(env, "CJ_API_KEY"),
             supplier_check_policy=_get(env, "SUPPLIER_CHECK_POLICY", "strict").lower(),
             stock_cache_max_age_minutes=_int(env, "STOCK_CACHE_MAX_AGE_MINUTES", 15, 0, 1440),
             fulfillment_mode=_get(env, "FULFILLMENT_MODE", "manual").lower(),
@@ -224,8 +226,8 @@ class Settings:
 
     # ------------------------------------------------------------------ validation
     def _validate(self) -> None:
-        if self.supplier_mode not in ("mock", "manual", "1688"):
-            raise ConfigError("SUPPLIER_MODE must be mock, manual or 1688")
+        if self.supplier_mode not in ("mock", "manual", "1688", "cj"):
+            raise ConfigError("SUPPLIER_MODE must be mock, manual, 1688 or cj")
         if self.payment_provider not in ("sandbox", "stripe"):
             raise ConfigError("PAYMENT_PROVIDER must be sandbox or stripe")
         if self.payment_mode not in ("test", "live"):
@@ -234,8 +236,8 @@ class Settings:
             raise ConfigError("SUPPLIER_CHECK_POLICY must be strict or cache")
         if self.fulfillment_mode not in ("manual", "automatic"):
             raise ConfigError("FULFILLMENT_MODE must be manual or automatic")
-        if self.fulfillment_mode == "automatic" and self.supplier_mode != "1688":
-            raise ConfigError("FULFILLMENT_MODE=automatic requires SUPPLIER_MODE=1688")
+        if self.fulfillment_mode == "automatic" and self.supplier_mode not in ("1688", "cj"):
+            raise ConfigError("FULFILLMENT_MODE=automatic requires SUPPLIER_MODE=1688 or cj")
         if not (len(self.store_currency) == 3 and self.store_currency.isalpha()):
             raise ConfigError("STORE_CURRENCY must be a 3-letter ISO code")
         if not self.database_url:
@@ -263,6 +265,8 @@ class Settings:
                 problems.append("PAYMENT_WEBHOOK_SECRET must be set")
             if "*" in self.cors_allowed_origins:
                 problems.append("CORS_ALLOWED_ORIGINS must not contain *")
+            if self.supplier_mode == "cj" and not self.cj_api_key:
+                problems.append("SUPPLIER_MODE=cj requires CJ_API_KEY")
             if self.supplier_mode == "1688" and not (
                 self.supplier_1688_api_key and self.supplier_1688_api_secret
             ):
