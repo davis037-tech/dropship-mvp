@@ -22,7 +22,50 @@ from backend.services import product_sync
 from backend.suppliers import build_supplier_adapter
 
 log = logging.getLogger(__name__)
-\n\ndef _bootstrap_cj_product(ctx: AppContext) -> None:\n    """Put one in-stock CJ product on the storefront when the catalog is empty.\n\n    This is intentionally a one-product bootstrap for the MVP; it does nothing\n    once an active product already exists.\n    """\n    if ctx.settings.supplier_mode != "cj" or not getattr(ctx.supplier, "configured", False):\n        return\n    if product_repo.list_all(ctx.db, public_only=True):\n        return\n    if ctx.db.fetch_one("SELECT id FROM products WHERE supplier_platform = 'cj' LIMIT 1"):\n        return\n    try:\n        rows = ctx.supplier.list_products(page=1, size=10)\n        for row in rows:\n            sid = str(row.get("pid") or row.get("productId") or row.get("id") or "")\n            name = str(row.get("productNameEn") or row.get("nameEn") or row.get("productName") or row.get("name") or "").strip()\n            price = float(row.get("sellPrice") or row.get("nowPrice") or row.get("discountPrice") or row.get("price") or 0)\n            stock = int(float(row.get("inventory") or row.get("warehouseInventoryNum") or row.get("totalVerifiedInventory") or row.get("availableInventory") or 0))\n            image = row.get("bigImage") or row.get("productImage") or ""\n            if not sid or not name or price <= 0 or stock <= 0:\n                continue\n            slug = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")[:90] or ("cj-" + sid[:12].lower())\n            base_slug, n = slug, 2\n            while product_repo.get_by_slug(ctx.db, slug):\n                slug = f"{base_slug}-{n}"\n                n += 1\n            images = [{"url": image, "alt": name}] if isinstance(image, str) and image.startswith("https://") else []\n            base = {"name": name, "slug": slug,\n                    "description": "Product fulfilled by our supplier. Shipping times and final price are shown at checkout.",\n                    "supplier_product_id": sid, "supplier_platform": "cj", "supplier_currency": "USD",\n                    "supplier_cost": major_to_minor(price), "estimated_shipping_cost": 0, "agent_fee": 0,\n                    "other_supplier_costs": 0, "stock": stock, "currency": ctx.settings.store_currency,\n                    "status": "active", "retail_price": 0, "images": images, "specifications": []}\n            costs = product_sync.compute_costs(ctx, base)\n            product_repo.create(ctx.db, {**base, **costs, "retail_price": costs["recommended_price"]})\n            log.info("Bootstrapped CJ product %s (%s) into storefront", sid, name[:80])\n            return\n        log.warning("CJ bootstrap found no in-stock priced product")\n    except Exception as exc:\n        log.error("CJ product bootstrap failed: %s", exc)\n
+
+
+def _bootstrap_cj_product(ctx: AppContext) -> None:
+    """Put one in-stock CJ product on the storefront when the catalog is empty.
+
+    This is intentionally a one-product bootstrap for the MVP; it does nothing
+    once an active product already exists.
+    """
+    if ctx.settings.supplier_mode != "cj" or not getattr(ctx.supplier, "configured", False):
+        return
+    if product_repo.list_all(ctx.db, public_only=True):
+        return
+    if ctx.db.fetch_one("SELECT id FROM products WHERE supplier_platform = 'cj' LIMIT 1"):
+        return
+    try:
+        rows = ctx.supplier.list_products(page=1, size=10)
+        for row in rows:
+            sid = str(row.get("pid") or row.get("productId") or row.get("id") or "")
+            name = str(row.get("productNameEn") or row.get("nameEn") or row.get("productName") or row.get("name") or "").strip()
+            price = float(row.get("sellPrice") or row.get("nowPrice") or row.get("discountPrice") or row.get("price") or 0)
+            stock = int(float(row.get("inventory") or row.get("warehouseInventoryNum") or row.get("totalVerifiedInventory") or row.get("availableInventory") or 0))
+            image = row.get("bigImage") or row.get("productImage") or ""
+            if not sid or not name or price <= 0 or stock <= 0:
+                continue
+            slug = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")[:90] or ("cj-" + sid[:12].lower())
+            base_slug, n = slug, 2
+            while product_repo.get_by_slug(ctx.db, slug):
+                slug = f"{base_slug}-{n}"
+                n += 1
+            images = [{"url": image, "alt": name}] if isinstance(image, str) and image.startswith("https://") else []
+            base = {"name": name, "slug": slug,
+                    "description": "Product fulfilled by our supplier. Shipping times and final price are shown at checkout.",
+                    "supplier_product_id": sid, "supplier_platform": "cj", "supplier_currency": "USD",
+                    "supplier_cost": major_to_minor(price), "estimated_shipping_cost": 0, "agent_fee": 0,
+                    "other_supplier_costs": 0, "stock": stock, "currency": ctx.settings.store_currency,
+                    "status": "active", "retail_price": 0, "images": images, "specifications": []}
+            costs = product_sync.compute_costs(ctx, base)
+            product_repo.create(ctx.db, {**base, **costs, "retail_price": costs["recommended_price"]})
+            log.info("Bootstrapped CJ product %s (%s) into storefront", sid, name[:80])
+            return
+        log.warning("CJ bootstrap found no in-stock priced product")
+    except Exception as exc:
+        log.error("CJ product bootstrap failed: %s", exc)
+
 
 def build_context(env: Optional[Mapping] = None) -> AppContext:
     settings = Settings.from_env(env)
