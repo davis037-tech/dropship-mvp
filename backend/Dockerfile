@@ -9,4 +9,4 @@ COPY frontend frontend
 RUN useradd -r -u 10001 app && chown -R app /app
 USER app
 EXPOSE 8000
-CMD ["gunicorn", "backend.wsgi:app", "--bind", "0.0.0.0:8000", "--workers", "2", "--access-logfile", "-"]
+CMD ["gunicorn", "backend.wsgi:app", "--bind", "0.0.0.0:8000", "--workers", "1", "--access-logfile", "-"]
