@@ -33,7 +33,14 @@ def build_context(env: Optional[Mapping] = None) -> AppContext:
             return settings.public_base_url
         return request.host_url.rstrip("/") if has_request_context() else "http://localhost:5000"
 
-    ctx = AppContext(settings=settings, db=db, supplier=build_supplier_adapter(settings),
+    supplier = build_supplier_adapter(settings)
+    if settings.supplier_mode == "cj" and getattr(supplier, "configured", False):
+        try:
+            supplier.authentication_check()
+            log.info("CJ API authentication succeeded")
+        except Exception as exc:
+            log.error("CJ API authentication failed: %s", exc)
+    ctx = AppContext(settings=settings, db=db, supplier=supplier,
                      payments=build_payment_provider(settings, base_url), limiter=security.RateLimiter())
     holder["ctx"] = ctx
     return ctx
