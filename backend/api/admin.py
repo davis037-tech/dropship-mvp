@@ -155,11 +155,11 @@ def cj_products():
     out = []
     for row in rows:
         pid = row.get("pid") or row.get("productId") or row.get("id") or ""
-        title = row.get("productNameEn") or row.get("productName") or row.get("name") or ""
+        title = row.get("productNameEn") or row.get("nameEn") or row.get("productName") or row.get("name") or ""
         image = row.get("bigImage") or row.get("productImage") or ""
         images = row.get("productImageSet") or ([image] if image else [])
-        price = row.get("sellPrice") or row.get("price") or 0
-        stock = row.get("inventory") or row.get("availableInventory") or 0
+        price = row.get("sellPrice") or row.get("nowPrice") or row.get("discountPrice") or row.get("price") or 0
+        stock = row.get("inventory") or row.get("warehouseInventoryNum") or row.get("totalVerifiedInventory") or row.get("availableInventory") or 0
         out.append({"supplier_product_id": str(pid), "name": str(title), "image": image,
                     "images": images[:12] if isinstance(images, list) else [],
                     "supplier_cost": float(price or 0), "supplier_currency": "USD",
@@ -185,7 +185,7 @@ def cj_import_products():
             continue
         if ctx().db.fetch_one("SELECT id FROM products WHERE supplier_platform = 'cj' AND supplier_product_id = ?", [sid]):
             continue
-        name = str(row.get("productNameEn") or row.get("productName") or row.get("name") or "").strip()
+        name = str(row.get("productNameEn") or row.get("nameEn") or row.get("productName") or row.get("name") or "").strip()
         if not name:
             continue
         import re
@@ -195,8 +195,8 @@ def cj_import_products():
         while product_repo.get_by_slug(ctx().db, slug):
             slug = f"{slug_base}-{n}"
             n += 1
-        price = float(row.get("sellPrice") or row.get("price") or 0)
-        stock = int(float(row.get("inventory") or row.get("availableInventory") or 0))
+        price = float(row.get("sellPrice") or row.get("nowPrice") or row.get("discountPrice") or row.get("price") or 0)
+        stock = int(float(row.get("inventory") or row.get("warehouseInventoryNum") or row.get("totalVerifiedInventory") or row.get("availableInventory") or 0))
         image = row.get("bigImage") or row.get("productImage") or ""
         raw_images = row.get("productImageSet") or ([image] if image else [])
         images = [{"url": u, "alt": name} for u in raw_images if isinstance(u, str) and u.startswith("https://")][:12]
@@ -206,8 +206,12 @@ def cj_import_products():
                 "other_supplier_costs": 0, "stock": max(stock, 0), "currency": ctx().settings.store_currency,
                 "status": "draft", "retail_price": 0, "images": images, "specifications": []}
         costs = product_sync.compute_costs(ctx(), base)
-        pid = product_repo.create(ctx().db, {**base, **costs})
-        created.append({"id": pid, "name": name, "supplier_product_id": sid})
+        # Make the first real CJ import immediately visible when it has stock
+        # and a valid recommended price. This is the MVP storefront path.
+        retail = costs["recommended_price"]
+        status = "active" if stock > 0 and retail > 0 else "draft"
+        pid = product_repo.create(ctx().db, {**base, **costs, "retail_price": retail, "status": status})
+        created.append({"id": pid, "name": name, "supplier_product_id": sid, "status": status})
     return jsonify({"created": created, "count": len(created)}), 201
 
 
