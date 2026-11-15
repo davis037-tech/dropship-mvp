@@ -28,5 +28,5 @@ def build_supplier_adapter(settings: Settings) -> SupplierAdapter:
     if mode == "cj":
         from backend.suppliers.cj import CJDropshippingAdapter
 
-        return CJDropshippingAdapter(settings.cj_api_key)
+        return CJDropshippingAdapter(settings.cj_api_key, settings.cj_access_token, settings.cj_refresh_token)
     raise ConfigError(f"unknown SUPPLIER_MODE {mode}")
