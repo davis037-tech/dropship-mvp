@@ -89,6 +89,7 @@ def build_context(env: Optional[Mapping] = None) -> AppContext:
             log.error("CJ API authentication failed: %s", exc)
     ctx = AppContext(settings=settings, db=db, supplier=supplier,
                      payments=build_payment_provider(settings, base_url), limiter=security.RateLimiter())
+    _bootstrap_cj_product(ctx)
     holder["ctx"] = ctx
     return ctx
 
