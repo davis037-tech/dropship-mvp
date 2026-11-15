@@ -139,6 +139,78 @@ def _mirror_supplier(p_id: int):
         product_repo.update(ctx().db, p_id, {"last_synced_at": utcnow()})
 
 
+@bp.get("/cj/products")
+def cj_products():
+    """Search the live CJ catalog without changing the storefront."""
+    supplier = ctx().supplier
+    if supplier.name != "cj" or not hasattr(supplier, "list_products"):
+        raise ApiError(409, "cj_not_enabled", "CJ supplier mode is not enabled.")
+    keyword = (request.args.get("keyword") or "").strip()
+    country = (request.args.get("country") or "").strip().upper()
+    try:
+        size = min(max(int(request.args.get("size", 20)), 1), 50)
+        rows = supplier.list_products(keyword=keyword, page=1, size=size, country_code=country)
+    except Exception as exc:
+        raise ApiError(502, "cj_fetch_failed", str(exc)[:300])
+    out = []
+    for row in rows:
+        pid = row.get("pid") or row.get("productId") or row.get("id") or ""
+        title = row.get("productNameEn") or row.get("productName") or row.get("name") or ""
+        image = row.get("bigImage") or row.get("productImage") or ""
+        images = row.get("productImageSet") or ([image] if image else [])
+        price = row.get("sellPrice") or row.get("price") or 0
+        stock = row.get("inventory") or row.get("availableInventory") or 0
+        out.append({"supplier_product_id": str(pid), "name": str(title), "image": image,
+                    "images": images[:12] if isinstance(images, list) else [],
+                    "supplier_cost": float(price or 0), "supplier_currency": "USD",
+                    "stock": int(float(stock or 0))})
+    return jsonify({"products": out, "count": len(out)})
+
+
+@bp.post("/products/import-cj")
+def cj_import_products():
+    """Import current CJ catalog results as draft products."""
+    supplier = ctx().supplier
+    if supplier.name != "cj" or not hasattr(supplier, "list_products"):
+        raise ApiError(409, "cj_not_enabled", "CJ supplier mode is not enabled.")
+    body = request.get_json(silent=True) or {}
+    keyword = str(body.get("keyword") or "").strip()
+    country = str(body.get("country") or "").strip().upper()
+    size = min(max(int(body.get("size", 20)), 1), 50)
+    rows = supplier.list_products(keyword=keyword, page=1, size=size, country_code=country)
+    created = []
+    for row in rows:
+        sid = str(row.get("pid") or row.get("productId") or row.get("id") or "")
+        if not sid:
+            continue
+        if ctx().db.fetch_one("SELECT id FROM products WHERE supplier_platform = 'cj' AND supplier_product_id = ?", [sid]):
+            continue
+        name = str(row.get("productNameEn") or row.get("productName") or row.get("name") or "").strip()
+        if not name:
+            continue
+        import re
+        slug_base = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")[:90] or ("cj-" + sid[:12].lower())
+        slug = slug_base
+        n = 2
+        while product_repo.get_by_slug(ctx().db, slug):
+            slug = f"{slug_base}-{n}"
+            n += 1
+        price = float(row.get("sellPrice") or row.get("price") or 0)
+        stock = int(float(row.get("inventory") or row.get("availableInventory") or 0))
+        image = row.get("bigImage") or row.get("productImage") or ""
+        raw_images = row.get("productImageSet") or ([image] if image else [])
+        images = [{"url": u, "alt": name} for u in raw_images if isinstance(u, str) and u.startswith("https://")][:12]
+        base = {"name": name, "slug": slug, "description": "Imported from CJ. Review the description, shipping cost and retail price before publishing.",
+                "supplier_product_id": sid, "supplier_platform": "cj", "supplier_currency": "USD",
+                "supplier_cost": major_to_minor(price), "estimated_shipping_cost": 0, "agent_fee": 0,
+                "other_supplier_costs": 0, "stock": max(stock, 0), "currency": ctx().settings.store_currency,
+                "status": "draft", "retail_price": 0, "images": images, "specifications": []}
+        costs = product_sync.compute_costs(ctx(), base)
+        pid = product_repo.create(ctx().db, {**base, **costs})
+        created.append({"id": pid, "name": name, "supplier_product_id": sid})
+    return jsonify({"created": created, "count": len(created)}), 201
+
+
 @bp.get("/products")
 def products_list():
     return jsonify({"products": [_admin_product(p) for p in product_repo.list_all(ctx().db)]})
