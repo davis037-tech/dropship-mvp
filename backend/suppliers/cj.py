@@ -123,9 +123,21 @@ class CJDropshippingAdapter(SupplierAdapter):
             f"{key}={urllib.parse.quote(str(value))}" for key, value in params.items()
         )
         data = self._call("GET", f"/product/listV2?{query}").get("data") or {}
+        # CJ V2 returns: data.content[].productList[].
+        # Flatten that structure so the rest of the app can consume normal
+        # product rows without knowing CJ's search-result wrapper.
         if isinstance(data, list):
             return data
-        for key in ("list", "records", "content", "products"):
+        content = data.get("content") if isinstance(data, dict) else None
+        if isinstance(content, list):
+            rows = []
+            for block in content:
+                if isinstance(block, dict) and isinstance(block.get("productList"), list):
+                    rows.extend(block["productList"])
+                elif isinstance(block, dict):
+                    rows.append(block)
+            return rows
+        for key in ("list", "records", "products"):
             if isinstance(data.get(key), list):
                 return data[key]
         return []
