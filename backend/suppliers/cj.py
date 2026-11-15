@@ -34,10 +34,10 @@ class CJDropshippingAdapter(SupplierAdapter):
     supports_live_checks = True
     BASE = "https://developers.cjdropshipping.com/api2.0/v1"
 
-    def __init__(self, api_key: str = ""):
+    def __init__(self, api_key: str = "", access_token: str = "", refresh_token: str = ""):
         self._api_key = api_key
-        self._access_token = ""
-        self._refresh_token = ""
+        self._access_token = access_token
+        self._refresh_token = refresh_token
         self._access_expiry = 0.0
         self._refresh_expiry = 0.0
 
@@ -73,6 +73,8 @@ class CJDropshippingAdapter(SupplierAdapter):
             raise SupplierNotConfigured("CJ_API_KEY is not configured")
 
         now = time.time()
+        if self._access_token and self._access_expiry == 0:
+            self._access_expiry = now + 150 * 24 * 60 * 60
         if self._access_token and now < self._access_expiry - 60:
             return
 
