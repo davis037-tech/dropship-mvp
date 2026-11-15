@@ -62,6 +62,10 @@ def create_app(env: Optional[Mapping] = None) -> Flask:
     if ctx.settings.payment_provider == "sandbox" and not ctx.settings.is_production:
         app.register_blueprint(dev.bp)
 
+    @app.get("/health")
+    def _health():
+        return jsonify({"status": "ok", "service": "dropship-mvp"})
+
     @app.errorhandler(ApiError)
     def _api_error(e: ApiError):
         return jsonify(e.to_dict()), e.status
