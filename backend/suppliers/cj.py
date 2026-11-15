@@ -9,6 +9,7 @@ import time
 from typing import Any
 
 import urllib.error
+import urllib.parse
 import urllib.request
 import json
 
