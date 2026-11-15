@@ -1,0 +1,22 @@
+# secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+# python
+__pycache__/
+*.pyc
+.venv/
+venv/
+.pytest_cache/
+# local data
+data/
+*.db
+*.db-wal
+*.db-shm
+# node / misc
+node_modules/
+.DS_Store
+# test artefacts
+tests/e2e/screenshots/
