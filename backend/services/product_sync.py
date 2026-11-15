@@ -17,6 +17,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass, field
 from typing import Optional
+from decimal import Decimal
 
 from backend.context import AppContext
 from backend.models import products as product_repo
@@ -43,9 +44,12 @@ def compute_costs(ctx: AppContext, p: dict, **override) -> dict:
     """Landed cost + recommended price for a product row (with optional field overrides)."""
     v = {**p, **override}
     cfg = ctx.settings.pricing
+    supplier_currency = str(v["supplier_currency"]).upper()
+    store_currency = ctx.settings.store_currency.upper()
+    fx_rate = Decimal("1") if supplier_currency == store_currency else cfg.supplier_fx_rate
     landed = pricing.landed_cost(
-        supplier_cost=v["supplier_cost"], supplier_currency=v["supplier_currency"],
-        store_currency=ctx.settings.store_currency, fx_rate=cfg.supplier_fx_rate,
+        supplier_cost=v["supplier_cost"], supplier_currency=supplier_currency,
+        store_currency=store_currency, fx_rate=fx_rate,
         estimated_shipping=v["estimated_shipping_cost"], agent_fee=v["agent_fee"],
         other_costs=v["other_supplier_costs"],
     )
