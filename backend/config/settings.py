@@ -128,6 +128,8 @@ class Settings:
     supplier_1688_api_secret: str
     supplier_1688_access_token: str
     cj_api_key: str
+    cj_access_token: str
+    cj_refresh_token: str
     supplier_check_policy: str      # strict | cache
     stock_cache_max_age_minutes: int
     fulfillment_mode: str           # manual | automatic
@@ -209,6 +211,8 @@ class Settings:
             supplier_1688_api_secret=_get(env, "SUPPLIER_1688_API_SECRET"),
             supplier_1688_access_token=_get(env, "SUPPLIER_1688_ACCESS_TOKEN"),
             cj_api_key=_get(env, "CJ_API_KEY"),
+            cj_access_token=_get(env, "CJ_ACCESS_TOKEN"),
+            cj_refresh_token=_get(env, "CJ_REFRESH_TOKEN"),
             supplier_check_policy=_get(env, "SUPPLIER_CHECK_POLICY", "strict").lower(),
             stock_cache_max_age_minutes=_int(env, "STOCK_CACHE_MAX_AGE_MINUTES", 15, 0, 1440),
             fulfillment_mode=_get(env, "FULFILLMENT_MODE", "manual").lower(),
