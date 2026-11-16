@@ -4,6 +4,7 @@ import { productImage } from '../components/media.js';
 import { getProduct, getCountries } from '../services/api.js';
 import { addToCart, getCountry, setCountry } from '../services/cart.js';
 import { countryName, deliveryText, money } from '../services/format.js';
+import { isLoggedIn } from '../services/customer.js';
 
 async function main() {
   renderLayout();
@@ -39,13 +40,15 @@ async function main() {
   select.addEventListener('change', () => { setCountry(select.value); refresh(); });
   refresh();
 
-  const buy = p.available ? h('div', {},
+  const loginUrl = '/login?next=' + encodeURIComponent(location.pathname);
+  const buy = p.available ? (isLoggedIn() ? h('div', {},
     h('div', { class: 'field-inline' }, h('span', { class: 'small' }, 'Quantity'),
       h('div', { class: 'qty' }, h('button', { type: 'button', 'aria-label': 'Decrease quantity', onclick: () => setQty(qty - 1) }, '−'), qtyEl,
         h('button', { type: 'button', 'aria-label': 'Increase quantity', onclick: () => setQty(qty + 1) }, '+'))),
     h('div', { class: 'actions' },
       h('button', { class: 'btn btn-primary', type: 'button', onclick: () => { addToCart(p.slug, qty, p.max_quantity); msg.textContent = 'Added to your cart.'; } }, 'Add to cart'),
       h('button', { class: 'btn btn-green', type: 'button', onclick: () => { addToCart(p.slug, qty, p.max_quantity); location.href = '/checkout'; } }, 'Buy now')), msg)
+    : h('div', { class: 'notice' }, 'Please log in before adding this product to your cart or buying it. ', h('a', { href: loginUrl }, 'Log in')))
     : h('p', { class: 'notice' }, 'This item is currently unavailable. Please check back soon.');
 
   document.title = `${p.name} | ${document.title.split('|').pop().trim()}`;
