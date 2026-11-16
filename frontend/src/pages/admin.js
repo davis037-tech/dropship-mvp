@@ -61,8 +61,10 @@ async function products() {
         h('td', {}, String(p.stock)),
         h('td', {}, h('button', { class: 'btn btn-green btn-sm', type: 'button', onclick: async () => {
           try {
-            const imported = await call('/api/admin/products/import-cj', { method: 'POST', body: { keyword: keyword.value.trim(), size: 20 } });
-            mount(cjOut, notice('ok', `Imported ${imported.count} new CJ products as drafts. Open Products below to edit and publish.`));
+            // Import exactly the rows already returned by CJ instead of asking CJ
+            // for the same catalog page again.
+            const imported = await call('/api/admin/products/import-cj', { method: 'POST', body: { products: r.products } });
+            mount(cjOut, notice('ok', `Imported ${imported.count} CJ products. The storefront/database now uses the saved product records.`));
             setTimeout(products, 1000);
           } catch (e) { mount(cjOut, notice('error', e.message)); }
         } }, 'Import results'))))) : h('p', { class: 'muted' }, 'No CJ products found.'));
