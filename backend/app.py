@@ -39,7 +39,7 @@ def _bootstrap_cj_product(ctx: AppContext) -> None:
             try:
                 detail = ctx.supplier.get_product(pid)
             except Exception as exc:
-                log.warning("Skipping CJ product %s: detail lookup failed: %s", pid, exc)
+                log.warning("Skipping CJ product %s: detail lookup failed", pid)
                 continue
             sid = str(detail.supplier_product_id or "").strip()
             name = str(detail.title or row.get("nameEn") or row.get("productNameEn") or "CJ Product").strip()
@@ -68,7 +68,7 @@ def _bootstrap_cj_product(ctx: AppContext) -> None:
             return
         log.warning("CJ bootstrap found no usable in-stock variant")
     except Exception as exc:
-        log.error("CJ product bootstrap failed: %s", exc)
+        log.error("CJ product bootstrap failed")
 
 
 def build_context(env: Optional[Mapping] = None) -> AppContext:
@@ -90,10 +90,9 @@ def build_context(env: Optional[Mapping] = None) -> AppContext:
             supplier.authentication_check()
             log.info("CJ API authentication succeeded")
         except Exception as exc:
-            log.error("CJ API authentication failed: %s", exc)
+            log.error("CJ API authentication failed")
     ctx = AppContext(settings=settings, db=db, supplier=supplier,
                      payments=build_payment_provider(settings, base_url), limiter=security.RateLimiter())
-    _bootstrap_cj_product(ctx)
     holder["ctx"] = ctx
     return ctx
 
