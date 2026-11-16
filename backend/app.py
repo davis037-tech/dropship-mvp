@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import logging
-import re
 from typing import Mapping, Optional
 
 from flask import Flask, jsonify
@@ -16,59 +15,9 @@ from backend.context import AppContext
 from backend.database.db import Database
 from backend.database.migrate import run_migrations
 from backend.payments.provider import build_payment_provider
-from backend.models import products as product_repo
-from backend.models.common import major_to_minor
-from backend.services import product_sync
 from backend.suppliers import build_supplier_adapter
 
 log = logging.getLogger(__name__)
-
-
-def _bootstrap_cj_product(ctx: AppContext) -> None:
-    """Import the first usable CJ product and a real CJ variant into the storefront."""
-    if ctx.settings.supplier_mode != "cj" or not getattr(ctx.supplier, "configured", False):
-        return
-    if product_repo.list_all(ctx.db, public_only=True):
-        return
-    try:
-        rows = ctx.supplier.list_products(page=1, size=20)
-        for row in rows:
-            pid = str(row.get("pid") or row.get("productId") or row.get("id") or "").strip()
-            if not pid:
-                continue
-            try:
-                detail = ctx.supplier.get_product(pid)
-            except Exception as exc:
-                log.warning("Skipping CJ product %s: detail lookup failed", pid)
-                continue
-            sid = str(detail.supplier_product_id or "").strip()
-            name = str(detail.title or row.get("nameEn") or row.get("productNameEn") or "CJ Product").strip()
-            price_minor = int(detail.price_minor or 0)
-            stock = int(detail.stock or 0)
-            image = (detail.images[0] if detail.images else "") or row.get("bigImage") or row.get("productImage") or ""
-            if not sid or price_minor <= 0 or stock <= 0:
-                continue
-            slug = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")[:90] or ("cj-" + sid[:12].lower())
-            base_slug, n = slug, 2
-            while product_repo.get_by_slug(ctx.db, slug):
-                slug = f"{base_slug}-{n}"
-                n += 1
-            images = [{"url": image, "alt": name}] if isinstance(image, str) and image.startswith("https://") else []
-            base = {
-                "name": name, "slug": slug,
-                "description": "Product fulfilled by our supplier. Shipping times and final price are shown at checkout.",
-                "supplier_product_id": sid, "supplier_platform": "cj", "supplier_currency": "USD",
-                "supplier_cost": price_minor, "estimated_shipping_cost": 0, "agent_fee": 0,
-                "other_supplier_costs": 0, "stock": stock, "currency": ctx.settings.store_currency,
-                "status": "active", "retail_price": 0, "images": images, "specifications": []
-            }
-            costs = product_sync.compute_costs(ctx, base)
-            product_repo.create(ctx.db, {**base, **costs, "retail_price": costs["recommended_price"]})
-            log.info("Bootstrapped CJ product %s (variant %s) into storefront", pid, sid)
-            return
-        log.warning("CJ bootstrap found no usable in-stock variant")
-    except Exception as exc:
-        log.error("CJ product bootstrap failed")
 
 
 def build_context(env: Optional[Mapping] = None) -> AppContext:
@@ -85,12 +34,7 @@ def build_context(env: Optional[Mapping] = None) -> AppContext:
         return request.host_url.rstrip("/") if has_request_context() else "http://localhost:5000"
 
     supplier = build_supplier_adapter(settings)
-    if settings.supplier_mode == "cj" and getattr(supplier, "configured", False):
-        try:
-            supplier.authentication_check()
-            log.info("CJ API authentication succeeded")
-        except Exception as exc:
-            log.error("CJ API authentication failed")
+    # CJ authentication is lazy; authenticate only when a CJ operation is requested.
     ctx = AppContext(settings=settings, db=db, supplier=supplier,
                      payments=build_payment_provider(settings, base_url), limiter=security.RateLimiter())
     holder["ctx"] = ctx
