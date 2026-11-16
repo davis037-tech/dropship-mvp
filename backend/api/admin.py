@@ -177,7 +177,19 @@ def cj_import_products():
     keyword = str(body.get("keyword") or "").strip()
     country = str(body.get("country") or "").strip().upper()
     size = min(max(int(body.get("size", 20)), 1), 50)
-    rows = supplier.list_products(keyword=keyword, page=1, size=size, country_code=country)
+
+    # Prefer the exact rows already fetched by the admin UI. This prevents the
+    # import button from making a second CJ catalog request and avoids needless
+    # CJ rate/IP-limit pressure. A fresh fetch is still supported for API clients.
+    supplied_rows = body.get("products")
+    if isinstance(supplied_rows, list) and supplied_rows:
+        rows = supplied_rows[:50]
+    else:
+        try:
+            rows = supplier.list_products(keyword=keyword, page=1, size=size, country_code=country)
+        except Exception as exc:
+            raise ApiError(502, "cj_fetch_failed", str(exc)[:300])
+
     created = []
     for row in rows:
         sid = str(row.get("pid") or row.get("productId") or row.get("id") or "")
