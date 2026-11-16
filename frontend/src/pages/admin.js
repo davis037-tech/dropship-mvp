@@ -93,7 +93,7 @@ const imgsToText = (s) => (s || []).map((x) => `${x.url} | ${x.alt || ''}`).join
 const textToImgs = (t) => t.split('\n').map((l) => l.trim()).filter(Boolean).map((l) => { const [url, ...alt] = l.split('|'); return { url: url.trim(), alt: alt.join('|').trim() }; });
 
 async function productForm(id) {
-  const p = id === 'new' ? { name: '', slug: '', description: '', supplier_product_id: '', supplier_platform: '1688', supplier_currency: 'CNY', supplier_cost: 0, estimated_shipping_cost: 0, agent_fee: 0, other_supplier_costs: 0, retail_price: 0, stock: 0, status: 'draft', images: [], specifications: [] }
+  const p = id === 'new' ? { name: '', slug: '', description: '', supplier_product_id: '', supplier_platform: '1688', supplier_currency: 'CNY', supplier_cost: 0, estimated_shipping_cost: 0, agent_fee: 0, other_supplier_costs: 0, retail_price: 0, market_price: '', stock: 0, status: 'draft', images: [], specifications: [] }
     : await call(`/api/admin/products/${id}`);
   const msg = h('div', {});
   const f = {};
@@ -107,7 +107,7 @@ async function productForm(id) {
     name: f.name.value, slug: f.slug.value, description: f.description.value, supplier_product_id: f.supplier_product_id.value || null,
     supplier_platform: f.supplier_platform.value, supplier_currency: f.supplier_currency.value, supplier_cost: f.supplier_cost.value,
     estimated_shipping_cost: f.estimated_shipping_cost.value, agent_fee: f.agent_fee.value, other_supplier_costs: f.other_supplier_costs.value,
-    retail_price: f.retail_price.value, use_recommended_price: f.rec.checked, stock: parseInt(f.stock.value || '0', 10),
+    retail_price: f.retail_price.value, market_price: f.market_price.value || null, use_recommended_price: f.rec.checked, stock: parseInt(f.stock.value || '0', 10),
     status: ['needs_review'].includes(f.status.value) ? undefined : f.status.value, images: textToImgs(f.images.value), specifications: textToSpecs(f.specs.value),
   });
   const save = async (e) => {
@@ -135,7 +135,7 @@ async function productForm(id) {
       h('div', { class: 'cols-2' }, input('estimated_shipping_cost', 'Est. shipping cost (store currency)', { type: 'number', step: '0.01', min: '0' }), input('agent_fee', 'Agent fee (store currency)', { type: 'number', step: '0.01', min: '0' })),
       input('other_supplier_costs', 'Other supplier costs (store currency)', { type: 'number', step: '0.01', min: '0' }),
       h('h2', { class: 'small-title' }, 'Storefront'),
-      h('div', { class: 'cols-2' }, input('retail_price', 'Retail price', { type: 'number', step: '0.01', min: '0' }), input('stock', 'Stock', { type: 'number', min: '0' })),
+      h('div', { class: 'cols-2' }, input('retail_price', 'Retail price', { type: 'number', step: '0.01', min: '0' }), input('market_price', 'Market reference price', { type: 'number', step: '0.01', min: '0' })), h('p', { class: 'small muted' }, 'If the market reference is above the profitable minimum, it becomes the retail price. If it is below the minimum, the profitable minimum wins.'), h('div', { class: 'cols-2' }, input('stock', 'Stock', { type: 'number', min: '0' }), h('div', {})),
       h('label', {}, f.rec, ' Use the recommended price from the pricing engine (overrides retail price)'),
       h('label', { for: 'status' }, 'Status'), f.status,
       h('label', { for: 'images' }, 'Images (https URL | alt text)'), f.images,
