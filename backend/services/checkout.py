@@ -73,7 +73,7 @@ def quote(ctx: AppContext, items, country: str) -> dict:
     return _quote_body(ctx, lines, zone)
 
 
-def create_checkout(ctx: AppContext, req, base_url: str) -> dict:
+def create_checkout(ctx: AppContext, req, base_url: str, authenticated_customer: dict | None = None) -> dict:
     db, cfg = ctx.db, ctx.settings.pricing
     zone = _zone_or_error(ctx, req.country)
     lines = _load_lines(ctx, req.items)
@@ -85,6 +85,8 @@ def create_checkout(ctx: AppContext, req, base_url: str) -> dict:
     est_lines = [(p["retail_price"], q, product_sync.compute_costs(ctx, p)["landed_cost"]) for p, q in fresh]
     est = pricing.order_estimate(est_lines, zone["shipping_cost"], cfg)
     now = utcnow()
+    customer_name = authenticated_customer["name"] if authenticated_customer else req.customer.name
+    customer_email = authenticated_customer["email"] if authenticated_customer else req.customer.email
     address = {"line1": req.address.line1, "line2": req.address.line2, "city": req.address.city,
                "region": req.address.region, "postal_code": req.address.postal_code}
 
@@ -92,7 +94,7 @@ def create_checkout(ctx: AppContext, req, base_url: str) -> dict:
         customer_id = db.insert(
             """INSERT INTO customers (email, name, created_at) VALUES (?,?,?)
                ON CONFLICT (email) DO UPDATE SET name = excluded.name RETURNING id""",
-            [req.customer.email, req.customer.name, now])
+            [customer_email, customer_name, now])
         order_id, reference = None, None
         for _ in range(5):
             reference = order_repo.new_reference()
@@ -102,7 +104,7 @@ def create_checkout(ctx: AppContext, req, base_url: str) -> dict:
             "reference": reference, "customer_id": customer_id, "status": "pending_payment",
             "payment_status": "pending", "subtotal": est["subtotal"], "shipping_cost": zone["shipping_cost"],
             "total": est["total"], "currency": ctx.settings.store_currency,
-            "supplier_status": "none", "shipping_name": req.customer.name,
+            "supplier_status": "none", "shipping_name": customer_name,
             "shipping_address": json.dumps(address), "shipping_country": req.country,
             "est_cost": est["cost"], "est_fees": est["fees"], "est_profit": est["profit"],
             "needs_review": 0, "created_at": now, "updated_at": now,
@@ -118,7 +120,7 @@ def create_checkout(ctx: AppContext, req, base_url: str) -> dict:
     try:
         session = ctx.payments.create_checkout_session(
             order_reference=reference, amount_minor=est["total"], currency=ctx.settings.store_currency,
-            customer_email=req.customer.email,
+            customer_email=customer_email,
             description=f"Order {reference} - " + ", ".join(p["name"] for p, _ in fresh),
             success_url=order_url, cancel_url=f"{base_url}/cart")
     except PaymentError as exc:
