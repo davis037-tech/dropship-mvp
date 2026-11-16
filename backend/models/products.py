@@ -91,6 +91,7 @@ def to_admin(p: dict, economics: Optional[dict] = None) -> dict:
         "other_supplier_costs": minor_to_major(p["other_supplier_costs"]),
         "landed_cost": minor_to_major(p["landed_cost"]),
         "recommended_price": minor_to_major(p["recommended_price"]),
+        "market_price": minor_to_major(p.get("market_price")) if p.get("market_price") is not None else None,
         "retail_price": minor_to_major(p["retail_price"]),
         "currency": p["currency"], "stock": p["stock"], "status": p["status"],
         "review_reason": p["review_reason"], "images": p["images"], "specifications": p["specifications"],
