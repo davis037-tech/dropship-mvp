@@ -5,7 +5,9 @@ short-lived cached access credentials and then uses the CJ-Access-Token header.
 """
 from __future__ import annotations
 
+import os
 import time
+from pathlib import Path
 from typing import Any
 
 import urllib.error
@@ -42,13 +44,24 @@ class CJDropshippingAdapter(SupplierAdapter):
         self._refresh_token = (refresh_token or "").strip()
         self._access_expiry = 0.0
         self._refresh_expiry = 0.0
+        self._last_request_at = 0.0
+        self._min_request_interval = 1.2
+        self._token_cache_file = Path(os.getenv("CJ_TOKEN_CACHE_FILE", "/tmp/cj_token_cache.json"))
+        self._load_cached_tokens()
 
     @property
     def configured(self) -> bool:
         return bool(self._api_key)
 
+    def _wait_before_request(self) -> None:
+        delay = self._min_request_interval - (time.monotonic() - self._last_request_at)
+        if delay > 0:
+            time.sleep(delay)
+        self._last_request_at = time.monotonic()
+
     def _json(self, method: str, url: str, payload: dict | None = None,
               headers: dict | None = None) -> dict:
+        self._wait_before_request()
         body = None if payload is None else json.dumps(payload).encode("utf-8")
         request = urllib.request.Request(url, data=body, method=method.upper())
         request.add_header("Content-Type", "application/json")
@@ -64,6 +77,8 @@ class CJDropshippingAdapter(SupplierAdapter):
                 raw = response.read().decode("utf-8")
         except urllib.error.HTTPError as exc:
             raw = exc.read().decode("utf-8", errors="replace")
+            if exc.code == 429:
+                time.sleep(3.0)
             raise CJApiError(f"CJ HTTP {exc.code}: {raw[:500]}") from exc
         except (urllib.error.URLError, TimeoutError) as exc:
             raise CJApiError(f"CJ request failed: {exc}") from exc
@@ -74,6 +89,34 @@ class CJDropshippingAdapter(SupplierAdapter):
         if data.get("code") not in (None, 0, 200) or data.get("success") is False:
             raise CJApiError(data.get("message") or "CJ API request failed")
         return data
+
+    def _load_cached_tokens(self) -> None:
+        if self._access_token:
+            return
+        try:
+            data = json.loads(self._token_cache_file.read_text("utf-8"))
+            self._access_token = str(data.get("access_token") or "").strip()
+            self._refresh_token = str(data.get("refresh_token") or self._refresh_token).strip()
+            self._access_expiry = float(data.get("access_expiry") or 0)
+            self._refresh_expiry = float(data.get("refresh_expiry") or 0)
+        except (OSError, ValueError, TypeError):
+            return
+
+    def _save_cached_tokens(self) -> None:
+        if not self._access_token:
+            return
+        try:
+            self._token_cache_file.parent.mkdir(parents=True, exist_ok=True)
+            tmp = self._token_cache_file.with_suffix(".tmp")
+            tmp.write_text(json.dumps({
+                "access_token": self._access_token,
+                "refresh_token": self._refresh_token,
+                "access_expiry": self._access_expiry,
+                "refresh_expiry": self._refresh_expiry,
+            }), encoding="utf-8")
+            tmp.replace(self._token_cache_file)
+        except OSError:
+            pass
 
     def _authorize(self) -> None:
         if not self.configured:
@@ -105,6 +148,7 @@ class CJDropshippingAdapter(SupplierAdapter):
 
         self._access_expiry = _iso_timestamp(data.get("accessTokenExpiryDate"))
         self._refresh_expiry = _iso_timestamp(data.get("refreshTokenExpiryDate"))
+        self._save_cached_tokens()
 
     def _call(self, method: str, path: str, payload: dict | None = None) -> dict:
         self._authorize()
@@ -254,8 +298,13 @@ class CJDropshippingAdapter(SupplierAdapter):
 
 
 def _number(value: Any) -> float:
+    if value is None:
+        return 0.0
+    text = str(value).strip()
+    if "--" in text:
+        text = text.split("--", 1)[0].strip()
     try:
-        return float(value or 0)
+        return float(text.replace(",", ""))
     except (TypeError, ValueError):
         return 0.0
 
