@@ -3,9 +3,14 @@ import { renderLayout } from '../components/layout.js';
 import { api } from '../services/api.js';
 import { getCart, setQuantity, getCountry } from '../services/cart.js';
 import { money } from '../services/format.js';
+import { isLoggedIn } from '../services/customer.js';
 
 async function draw() {
   const app = $('#app');
+  if (!isLoggedIn()) {
+    mount(app, h('div', { class: 'container narrow' }, h('h1', {}, 'Your cart'), h('p', { class: 'muted' }, 'Please log in to view and purchase items in your cart.'), h('a', { class: 'btn btn-green', href: '/login?next=/cart' }, 'Log in')));
+    return;
+  }
   const items = getCart();
   if (!items.length) {
     mount(app, h('div', { class: 'container narrow' }, h('h1', {}, 'Your cart'), h('p', { class: 'muted' }, 'Your cart is empty.'), h('a', { class: 'btn btn-green', href: '/#shop' }, 'Continue shopping')));
