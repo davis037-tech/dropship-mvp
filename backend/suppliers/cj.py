@@ -234,35 +234,52 @@ class CJDropshippingAdapter(SupplierAdapter):
         return total
 
     def get_product(self, supplier_product_id: str) -> SupplierProduct:
-        # CJ documents Product Query as GET /product/query?pid=...
-        query = urllib.parse.urlencode({"pid": supplier_product_id})
-        data = self._call("GET", f"/product/query?{query}").get("data") or {}
-        product = data.get("content", data) if isinstance(data, dict) else {}
-        variants = product.get("variants") or product.get("variantList") or []
-        if not variants:
-            variants = self.get_variants(str(supplier_product_id))
-        variant = variants[0] if variants else {}
-        price = _number(variant.get("variantSellPrice") or product.get("sellPrice"))
-        vid = str(variant.get("vid") or variant.get("variantId") or supplier_product_id)
-        stock = _int(
-            variant.get("variantAvailableInventory")
-            or variant.get("variantStock")
-            or product.get("availableInventory")
-            or product.get("inventory")
-        )
+        # CJ's current productDetail endpoint returns variants plus inventory in one call.
+        # Prefer it so an import does not make several dependent CJ requests.
+        detail = self._call(
+            "POST",
+            "/product/productDetail/query",
+            {"id": str(supplier_product_id)},
+        ).get("data") or {}
+
+        variants = detail.get("stanProducts") or []
+        inventories = detail.get("variantInventory") or []
+        inventory_by_vid = {}
+        for item in inventories:
+            if not isinstance(item, dict):
+                continue
+            vid = str(item.get("vid") or "").strip()
+            total = 0
+            for inv in item.get("inventory") or []:
+                if isinstance(inv, dict):
+                    total += _int(inv.get("totalInventory") or inv.get("storageNum") or inv.get("inventory"))
+            if vid:
+                inventory_by_vid[vid] = total
+
+        variant = next((v for v in variants if isinstance(v, dict)), {})
+        vid = str(variant.get("id") or variant.get("vid") or supplier_product_id).strip()
+        price = _number(variant.get("sellprice") or variant.get("variantSellPrice") or detail.get("sellprice"))
+        stock = inventory_by_vid.get(vid, _int(variant.get("totalInventory")))
+        images = []
+        if detail.get("bigimg"):
+            images.append(detail["bigimg"])
+        for v in variants:
+            if isinstance(v, dict) and v.get("img") and v["img"] not in images:
+                images.append(v["img"])
+
+        # If productDetail does not expose a usable inventory value, use the
+        # documented variant + stock endpoints as a single fallback path.
         if stock <= 0 and vid != str(supplier_product_id):
             stock = self.get_variant_stock(vid)
-        images = tuple(product.get("productImageSet") or product.get("images") or ())
-        if product.get("bigImage") and product["bigImage"] not in images:
-            images = (product["bigImage"], *images)
+
         return SupplierProduct(
             supplier_product_id=vid,
-            title=product.get("productNameEn") or product.get("productName") or product.get("name") or "",
-            url=product.get("productUrl") or "",
+            title=detail.get("nameen") or detail.get("nameEn") or detail.get("name") or "",
+            url=detail.get("supplierlink") or detail.get("productUrl") or "",
             price_minor=round(price * 100),
             currency="USD",
             stock=stock,
-            images=images,
+            images=tuple(images),
         )
 
     def get_price(self, supplier_product_id: str) -> SupplierPrice:
