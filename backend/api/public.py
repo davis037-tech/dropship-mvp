@@ -143,7 +143,13 @@ def checkout_quote():
 @rate_limit("checkout", 10)
 def create_checkout():
     body = validated(CheckoutRequest)
-    return jsonify(checkout.create_checkout(ctx(), body, base_url())), 201
+    auth = customer_token_from_request(request, ctx().settings.secret_key)
+    if not auth:
+        raise ApiError(401, "login_required", "Please log in before purchasing.")
+    customer = customer_repo.get(ctx().db, auth["id"])
+    if not customer:
+        raise ApiError(401, "login_required", "Please log in before purchasing.")
+    return jsonify(checkout.create_checkout(ctx(), body, base_url(), authenticated_customer=customer)), 201
 
 
 @bp.get("/orders/<reference>/status")
