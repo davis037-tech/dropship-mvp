@@ -113,6 +113,7 @@ class ProductBody(Base):
     agent_fee: Optional[Money] = Field(default=None, ge=0, le=100_000)
     other_supplier_costs: Optional[Money] = Field(default=None, ge=0, le=100_000)
     retail_price: Optional[Money] = Field(default=None, ge=0, le=1_000_000)
+    market_price: Optional[Money] = Field(default=None, ge=0, le=1_000_000)
     use_recommended_price: bool = False
     stock: Optional[int] = Field(default=None, ge=0, le=1_000_000)
     status: Optional[str] = Field(default=None, pattern=r"^(draft|active|unavailable|archived)$")
