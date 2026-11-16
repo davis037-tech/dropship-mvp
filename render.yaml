@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: dropship-mvp
+    runtime: docker
+    region: frankfurt
+    plan: free
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: .
+    autoDeployTrigger: commit
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: dropship-mvp-db
+          property: connectionString
+
+databases:
+  - name: dropship-mvp-db
+    plan: free
+    region: frankfurt
