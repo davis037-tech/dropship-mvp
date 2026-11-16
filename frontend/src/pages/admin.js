@@ -54,7 +54,7 @@ async function products() {
   const cjOut = h('div', {});
   const fetchCJ = async () => {
     try {
-      const r = await call('/api/admin/cj/products?keyword=' + encodeURIComponent(keyword.value.trim()) + '&size=20');
+      const r = await call('/api/admin/cj/products?keyword=' + encodeURIComponent(keyword.value.trim()) + '&size=5');
       mount(cjOut, r.products.length ? table(['CJ product', 'Cost', 'Stock', ''], r.products.map((p) => h('tr', {},
         h('td', {}, h('div', {}, p.name), h('div', { class: 'small muted' }, p.supplier_product_id)),
         h('td', {}, money(p.supplier_cost, p.supplier_currency)),
@@ -64,7 +64,7 @@ async function products() {
             // Import exactly the rows already returned by CJ instead of asking CJ
             // for the same catalog page again.
             const imported = await call('/api/admin/products/import-cj', { method: 'POST', body: { products: r.products } });
-            mount(cjOut, notice('ok', `Imported ${imported.count} CJ products. The storefront/database now uses the saved product records.`));
+            mount(cjOut, imported.errors && imported.errors.length ? notice('error', `Imported ${imported.count} products. ${imported.errors.join(' | ')}`) : notice('ok', `Imported ${imported.count} CJ products. The storefront/database now uses the saved product records.`));
             setTimeout(products, 1000);
           } catch (e) { mount(cjOut, notice('error', e.message)); }
         } }, 'Import results'))))) : h('p', { class: 'muted' }, 'No CJ products found.'));
