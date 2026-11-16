@@ -77,7 +77,7 @@ async function products() {
         catch (e) { mount(out, notice('error', e.message)); } } }, 'Sync all from supplier')),
     h('div', { class: 'card' }, h('h2', { class: 'small-title' }, 'Find products in CJ'),
       h('div', { class: 'actions' }, keyword, h('button', { class: 'btn btn-primary btn-sm', type: 'button', onclick: fetchCJ }, 'Fetch from CJ')),
-      h('p', { class: 'small muted' }, 'Fetched products are imported as drafts first. Review shipping cost, description and retail price before publishing.'),
+      h('p', { class: 'small muted' }, 'CJ results are enriched with live variant stock and price during import. Import only 3–5 products at a time.'),
       cjOut),
     table(['Product', 'Retail price', 'Supplier cost', 'Landed', 'Margin', 'Stock', 'Status', 'Last sync', ''], rows.map((p) => h('tr', {},
       h('td', {}, p.name), h('td', {}, money(p.retail_price, p.currency)), h('td', {}, money(p.supplier_cost, p.supplier_currency)),
