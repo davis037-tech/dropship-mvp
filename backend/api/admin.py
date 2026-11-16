@@ -169,37 +169,44 @@ def cj_products():
 
 @bp.post("/products/import-cj")
 def cj_import_products():
-    """Import current CJ catalog results as draft products."""
+    """Import exact CJ search results and enrich each product once."""
     supplier = ctx().supplier
     if supplier.name != "cj" or not hasattr(supplier, "list_products"):
         raise ApiError(409, "cj_not_enabled", "CJ supplier mode is not enabled.")
     body = request.get_json(silent=True) or {}
-    keyword = str(body.get("keyword") or "").strip()
-    country = str(body.get("country") or "").strip().upper()
-    size = min(max(int(body.get("size", 20)), 1), 50)
-
-    # Prefer the exact rows already fetched by the admin UI. This prevents the
-    # import button from making a second CJ catalog request and avoids needless
-    # CJ rate/IP-limit pressure. A fresh fetch is still supported for API clients.
-    supplied_rows = body.get("products")
-    if isinstance(supplied_rows, list) and supplied_rows:
-        rows = supplied_rows[:50]
+    supplied = body.get("products")
+    if isinstance(supplied, list) and supplied:
+        rows = supplied[:5]
     else:
+        keyword = str(body.get("keyword") or "").strip()
+        country = str(body.get("country") or "").strip().upper()
         try:
-            rows = supplier.list_products(keyword=keyword, page=1, size=size, country_code=country)
+            rows = supplier.list_products(keyword=keyword, page=1, size=min(max(int(body.get("size", 5)), 1), 5), country_code=country)
         except Exception as exc:
             raise ApiError(502, "cj_fetch_failed", str(exc)[:300])
 
     created = []
     for row in rows:
-        sid = str(row.get("pid") or row.get("productId") or row.get("id") or "")
-        if not sid:
+        catalog_id = str(row.get("pid") or row.get("productId") or row.get("id") or "").strip()
+        if not catalog_id:
             continue
-        if ctx().db.fetch_one("SELECT id FROM products WHERE supplier_platform = 'cj' AND supplier_product_id = ?", [sid]):
+        if ctx().db.fetch_one("SELECT id FROM products WHERE supplier_platform = 'cj' AND supplier_product_id = ?", [catalog_id]):
             continue
         name = str(row.get("productNameEn") or row.get("nameEn") or row.get("productName") or row.get("name") or "").strip()
         if not name:
             continue
+
+        try:
+            detail = supplier.get_product(catalog_id)
+        except Exception as exc:
+            raise ApiError(502, "cj_product_failed", f"CJ product {catalog_id} could not be loaded: {str(exc)[:180]}")
+
+        sid = str(detail.supplier_product_id or catalog_id).strip()
+        price_minor = int(detail.price_minor or 0)
+        stock = int(detail.stock or 0)
+        if price_minor <= 0 or stock <= 0:
+            continue
+
         import re
         slug_base = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")[:90] or ("cj-" + sid[:12].lower())
         slug = slug_base
@@ -207,23 +214,22 @@ def cj_import_products():
         while product_repo.get_by_slug(ctx().db, slug):
             slug = f"{slug_base}-{n}"
             n += 1
-        price = float(row.get("sellPrice") or row.get("nowPrice") or row.get("discountPrice") or row.get("price") or 0)
-        stock = int(float(row.get("inventory") or row.get("warehouseInventoryNum") or row.get("totalVerifiedInventory") or row.get("availableInventory") or 0))
-        image = row.get("bigImage") or row.get("productImage") or ""
-        raw_images = row.get("productImageSet") or ([image] if image else [])
-        images = [{"url": u, "alt": name} for u in raw_images if isinstance(u, str) and u.startswith("https://")][:12]
-        base = {"name": name, "slug": slug, "description": "Imported from CJ. Review the description, shipping cost and retail price before publishing.",
-                "supplier_product_id": sid, "supplier_platform": "cj", "supplier_currency": "USD",
-                "supplier_cost": major_to_minor(price), "estimated_shipping_cost": 0, "agent_fee": 0,
-                "other_supplier_costs": 0, "stock": max(stock, 0), "currency": ctx().settings.store_currency,
-                "status": "draft", "retail_price": 0, "images": images, "specifications": []}
+
+        images = [{"url": u, "alt": name} for u in detail.images if isinstance(u, str) and u.startswith("https://")][:12]
+        base = {
+            "name": name, "slug": slug,
+            "description": "Imported from CJ. Shipping cost and final retail price are calculated by the store.",
+            "supplier_product_id": sid, "supplier_platform": "cj", "supplier_currency": "USD",
+            "supplier_cost": price_minor, "estimated_shipping_cost": 0, "agent_fee": 0,
+            "other_supplier_costs": 0, "stock": stock, "currency": ctx().settings.store_currency,
+            "status": "active", "retail_price": 0, "images": images, "specifications": []
+        }
         costs = product_sync.compute_costs(ctx(), base)
-        # Make the first real CJ import immediately visible when it has stock
-        # and a valid recommended price. This is the MVP storefront path.
         retail = costs["recommended_price"]
-        status = "active" if stock > 0 and retail > 0 else "draft"
-        pid = product_repo.create(ctx().db, {**base, **costs, "retail_price": retail, "status": status})
-        created.append({"id": pid, "name": name, "supplier_product_id": sid, "status": status})
+        if retail <= 0:
+            continue
+        pid = product_repo.create(ctx().db, {**base, **costs, "retail_price": retail})
+        created.append({"id": pid, "name": name, "supplier_product_id": sid, "status": "active", "stock": stock})
     return jsonify({"created": created, "count": len(created)}), 201
 
 
