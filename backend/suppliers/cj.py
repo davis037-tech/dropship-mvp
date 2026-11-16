@@ -6,6 +6,7 @@ short-lived cached access credentials and then uses the CJ-Access-Token header.
 from __future__ import annotations
 
 import os
+import threading
 import time
 from pathlib import Path
 from typing import Any
@@ -31,6 +32,10 @@ class CJApiError(SupplierError):
     pass
 
 
+_CJ_REQUEST_LOCK = threading.Lock()
+_AUTH_COOLDOWN = 300.0
+
+
 class CJDropshippingAdapter(SupplierAdapter):
     name = "cj"
     supports_live_checks = True
@@ -46,7 +51,8 @@ class CJDropshippingAdapter(SupplierAdapter):
         self._refresh_expiry = 0.0
         self._last_request_at = 0.0
         self._min_request_interval = 1.2
-        self._token_cache_file = Path(os.getenv("CJ_TOKEN_CACHE_FILE", "/tmp/cj_token_cache.json"))
+        self._token_cache_file = Path(os.getenv("CJ_TOKEN_CACHE", os.getenv("CJ_TOKEN_CACHE_FILE", "/tmp/cj_token_cache.json")))
+        self._last_auth_at = 0.0
         self._load_cached_tokens()
 
     @property
@@ -61,35 +67,42 @@ class CJDropshippingAdapter(SupplierAdapter):
 
     def _json(self, method: str, url: str, payload: dict | None = None,
               headers: dict | None = None) -> dict:
-        self._wait_before_request()
         body = None if payload is None else json.dumps(payload).encode("utf-8")
-        request = urllib.request.Request(url, data=body, method=method.upper())
-        request.add_header("Content-Type", "application/json")
-        for key, value in (headers or {}).items():
-            # Never allow newline characters into an HTTP header value.
-            # This also prevents a pasted Access Token + Refresh Token block
-            # from becoming an invalid/unsafe header.
-            if isinstance(value, str):
-                value = value.strip().splitlines()[0]
-            request.add_header(key, value)
-        try:
-            with urllib.request.urlopen(request, timeout=20) as response:
-                raw = response.read().decode("utf-8")
-        except urllib.error.HTTPError as exc:
-            raw = exc.read().decode("utf-8", errors="replace")
-            if exc.code == 429:
-                time.sleep(3.0)
-            raise CJApiError(f"CJ HTTP {exc.code}: {raw[:500]}") from exc
-        except (urllib.error.URLError, TimeoutError) as exc:
-            raise CJApiError(f"CJ request failed: {exc}") from exc
-        try:
-            data = json.loads(raw)
-        except json.JSONDecodeError as exc:
-            raise CJApiError("CJ returned invalid JSON") from exc
-        if data.get("code") not in (None, 0, 200) or data.get("success") is False:
-            raise CJApiError(data.get("message") or "CJ API request failed")
-        return data
-
+        last_error = None
+        for attempt in range(3):
+            retryable = False
+            with _CJ_REQUEST_LOCK:
+                self._wait_before_request()
+                request = urllib.request.Request(url, data=body, method=method.upper())
+                request.add_header("Content-Type", "application/json")
+                for key, value in (headers or {}).items():
+                    if isinstance(value, str):
+                        value = value.strip().splitlines()[0]
+                    request.add_header(key, value)
+                try:
+                    with urllib.request.urlopen(request, timeout=20) as response:
+                        raw = response.read().decode("utf-8")
+                except urllib.error.HTTPError as exc:
+                    raw = exc.read().decode("utf-8", errors="replace")
+                    last_error = CJApiError(f"CJ HTTP {exc.code}: {raw[:500]}")
+                    retryable = exc.code == 429 or "too many requests" in raw.lower()
+                except (urllib.error.URLError, TimeoutError) as exc:
+                    raise CJApiError(f"CJ request failed: {exc}") from exc
+                else:
+                    try:
+                        data = json.loads(raw)
+                    except json.JSONDecodeError as exc:
+                        raise CJApiError("CJ returned invalid JSON") from exc
+                    message = str(data.get("message") or "")
+                    failed = data.get("code") not in (None, 0, 200) or data.get("success") is False
+                    if not failed:
+                        return data
+                    last_error = CJApiError(message or "CJ API request failed")
+                    retryable = "too many requests" in message.lower()
+            if not retryable or attempt == 2:
+                raise last_error
+            time.sleep(2.0 * (attempt + 1))
+        raise last_error or CJApiError("CJ API request failed")
     def _load_cached_tokens(self) -> None:
         if self._access_token:
             return
@@ -99,6 +112,7 @@ class CJDropshippingAdapter(SupplierAdapter):
             self._refresh_token = str(data.get("refresh_token") or self._refresh_token).strip()
             self._access_expiry = float(data.get("access_expiry") or 0)
             self._refresh_expiry = float(data.get("refresh_expiry") or 0)
+            self._last_auth_at = float(data.get("last_auth_at") or 0)
         except (OSError, ValueError, TypeError):
             return
 
@@ -113,6 +127,7 @@ class CJDropshippingAdapter(SupplierAdapter):
                 "refresh_token": self._refresh_token,
                 "access_expiry": self._access_expiry,
                 "refresh_expiry": self._refresh_expiry,
+                "last_auth_at": self._last_auth_at,
             }), encoding="utf-8")
             tmp.replace(self._token_cache_file)
         except OSError:
@@ -135,6 +150,8 @@ class CJDropshippingAdapter(SupplierAdapter):
                 {"refreshToken": self._refresh_token},
             ).get("data") or {}
         else:
+            if self._last_auth_at and now - self._last_auth_at < _AUTH_COOLDOWN:
+                raise CJApiError("CJ token request is temporarily rate-limited; reuse CJ_ACCESS_TOKEN/CJ_REFRESH_TOKEN or wait before requesting another token.")
             data = self._json(
                 "POST",
                 f"{self.BASE}/authentication/getAccessToken",
@@ -147,6 +164,7 @@ class CJDropshippingAdapter(SupplierAdapter):
             raise CJApiError("CJ did not return an access token")
 
         self._access_expiry = _iso_timestamp(data.get("accessTokenExpiryDate"))
+        self._last_auth_at = now
         self._refresh_expiry = _iso_timestamp(data.get("refreshTokenExpiryDate"))
         self._save_cached_tokens()
 
