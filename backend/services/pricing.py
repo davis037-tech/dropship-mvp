@@ -93,6 +93,15 @@ class Economics:
         }
 
 
+def market_aware_price(*, minimum_price: int, market_price: Optional[int]) -> tuple[int, str]:
+    """Choose a market-aware retail price without allowing an unprofitable price."""
+    if market_price is None or market_price <= 0:
+        return minimum_price, "no_market_reference"
+    if market_price >= minimum_price:
+        return market_price, "market_target_used"
+    return minimum_price, "market_below_profitable_minimum"
+
+
 def economics_at_price(price: int, landed: int, cfg: PricingConfig) -> Economics:
     fee = _round(Decimal(price) * cfg.payment_fee_rate) + cfg.payment_fixed_fee
     reserve = _round(Decimal(price) * cfg.refund_reserve_rate)
