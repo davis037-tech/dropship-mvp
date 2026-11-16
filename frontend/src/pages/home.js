@@ -61,7 +61,7 @@ async function main() {
     products.length ? h('div', { class: 'grid grid-3' }, products.map((p) => h('a', { class: 'card product-card', href: `/product/${p.slug}` },
       productImage(p), h('h3', {}, p.name), h('span', { class: 'price' }, fmt(p.price)),
       !p.available && h('span', { class: 'badge badge-warn' }, 'Currently unavailable'))))
-      : h('p', { class: 'muted' }, 'No products available right now.')));
+      : h('p', { class: 'notice' }, 'No products yet. We are preparing the first products for the store.')));
 
   const how = h('section', { id: 'how-it-works', class: 'section-alt' }, h('div', { class: 'container' },
     h('h2', {}, 'How it works'),
