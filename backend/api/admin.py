@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import hmac
+import re
 
 from flask import Blueprint, current_app, g, jsonify, request
 
@@ -94,6 +95,16 @@ def _admin_product(p: dict) -> dict:
     return product_repo.to_admin(p, _economics(p))
 
 
+def _cj_number(value) -> float:
+    text = str(value or "").strip()
+    if "--" in text:
+        text = text.split("--", 1)[0].strip()
+    try:
+        return float(text.replace(",", ""))
+    except (TypeError, ValueError):
+        return 0.0
+
+
 _MONEY = ("supplier_cost", "estimated_shipping_cost", "agent_fee", "other_supplier_costs", "retail_price")
 
 
@@ -162,7 +173,7 @@ def cj_products():
         stock = row.get("inventory") or row.get("warehouseInventoryNum") or row.get("totalVerifiedInventory") or row.get("availableInventory") or 0
         out.append({"supplier_product_id": str(pid), "name": str(title), "image": image,
                     "images": images[:12] if isinstance(images, list) else [],
-                    "supplier_cost": float(price or 0), "supplier_currency": "USD",
+                    "supplier_cost": _cj_number(price), "supplier_currency": "USD",
                     "stock": int(float(stock or 0))})
     return jsonify({"products": out, "count": len(out)})
 
@@ -186,7 +197,8 @@ def cj_import_products():
             raise ApiError(502, "cj_fetch_failed", str(exc)[:300])
 
     created = []
-    for row in rows:
+    errors = []
+    for row in rows[:5]:
         catalog_id = str(row.get("pid") or row.get("productId") or row.get("id") or "").strip()
         if not catalog_id:
             continue
@@ -199,7 +211,8 @@ def cj_import_products():
         try:
             detail = supplier.get_product(catalog_id)
         except Exception as exc:
-            raise ApiError(502, "cj_product_failed", f"CJ product {catalog_id} could not be loaded: {str(exc)[:180]}")
+            errors.append(f"{name}: {str(exc)[:180]}")
+            continue
 
         sid = str(detail.supplier_product_id or catalog_id).strip()
         price_minor = int(detail.price_minor or 0)
@@ -230,7 +243,7 @@ def cj_import_products():
             continue
         pid = product_repo.create(ctx().db, {**base, **costs, "retail_price": retail})
         created.append({"id": pid, "name": name, "supplier_product_id": sid, "status": "active", "stock": stock})
-    return jsonify({"created": created, "count": len(created)}), 201
+    return jsonify({"created": created, "count": len(created), "errors": errors}), 201
 
 
 @bp.get("/products")
