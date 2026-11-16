@@ -81,6 +81,25 @@ class LoginBody(Base):
     password: str = Field(min_length=1, max_length=200)
 
 
+class CustomerRegisterBody(Base):
+    name: str = Field(min_length=1, max_length=100)
+    email: str = Field(max_length=254)
+    password: str = Field(min_length=8, max_length=200)
+
+    @field_validator("name")
+    @classmethod
+    def n(cls, v):
+        return _clean(v)
+
+    @field_validator("email")
+    @classmethod
+    def e(cls, v):
+        v = _clean(v).lower()
+        if not _EMAIL.match(v):
+            raise ValueError("invalid email address")
+        return v
+
+
 class ImageIn(Base):
     url: str = Field(max_length=500)
     alt: str = Field(default="", max_length=200)
