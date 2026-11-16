@@ -8,9 +8,12 @@ from pydantic import ValidationError
 from werkzeug.exceptions import HTTPException
 
 from backend.api.errors import ApiError
-from backend.api.schemas import CheckoutRequest, QuoteRequest
+from backend.api.schemas import CheckoutRequest, CustomerRegisterBody, LoginBody, QuoteRequest
 from backend.api.security import rate_limit
+from backend.auth.customer import customer_token_from_request, issue_customer_token
+from backend.auth.passwords import hash_password, verify_password
 from backend.auth.tokens import order_access_token
+from backend.models import customers as customer_repo
 from backend.models import orders as order_repo
 from backend.models import products as product_repo
 from backend.models import shipping as shipping_repo
@@ -49,6 +52,48 @@ def public_config():
         "store_name": s.store_name, "currency": s.store_currency, "max_quantity": s.max_quantity,
         "payment_test_mode": s.payment_provider == "sandbox",
     })
+
+
+
+@bp.post("/customer/register")
+@rate_limit("customer_register", 5)
+def customer_register():
+    body = validated(CustomerRegisterBody)
+    c = ctx()
+    if customer_repo.get_by_email(c.db, body.email):
+        raise ApiError(409, "account_exists", "An account with that email already exists. Please log in.")
+    from backend.models.common import utcnow
+    now = utcnow()
+    customer_id = c.db.insert(
+        "INSERT INTO customers (email, name, password_hash, created_at) VALUES (?,?,?,?) RETURNING id",
+        [body.email, body.name, hash_password(body.password), now],
+    )
+    token = issue_customer_token(c.settings.secret_key, customer_id, body.email)
+    return jsonify({"token": token, "customer": {"id": customer_id, "name": body.name, "email": body.email}}), 201
+
+
+@bp.post("/customer/login")
+@rate_limit("customer_login", 10)
+def customer_login():
+    body = validated(LoginBody)
+    c = ctx()
+    customer = customer_repo.get_by_email(c.db, body.email)
+    if not customer or not customer.get("password_hash") or not verify_password(body.password, customer["password_hash"]):
+        raise ApiError(401, "invalid_credentials", "Invalid email or password")
+    token = issue_customer_token(c.settings.secret_key, customer["id"], customer["email"])
+    return jsonify({"token": token, "customer": {"id": customer["id"], "name": customer["name"], "email": customer["email"]}})
+
+
+@bp.get("/customer/me")
+def customer_me():
+    c = ctx()
+    auth = customer_token_from_request(request, c.settings.secret_key)
+    if not auth:
+        raise ApiError(401, "not_authenticated", "Please log in to continue.")
+    customer = customer_repo.get(c.db, auth["id"])
+    if not customer:
+        raise ApiError(401, "not_authenticated", "Please log in to continue.")
+    return jsonify({"customer": {"id": customer["id"], "name": customer["name"], "email": customer["email"]}})
 
 
 @bp.get("/products")
