@@ -53,7 +53,10 @@ def compute_costs(ctx: AppContext, p: dict, **override) -> dict:
         estimated_shipping=v["estimated_shipping_cost"], agent_fee=v["agent_fee"],
         other_costs=v["other_supplier_costs"],
     )
-    return {"landed_cost": landed, "recommended_price": pricing.recommended_price(landed, cfg)}
+    minimum_price = pricing.recommended_price(landed, cfg)
+    market_price = v.get("market_price")
+    final_price, market_status = pricing.market_aware_price(minimum_price=minimum_price, market_price=market_price)
+    return {"landed_cost": landed, "recommended_price": minimum_price, "market_retail_price": final_price, "market_status": market_status}
 
 
 def sync_product(ctx: AppContext, product_id: int) -> SyncResult:
