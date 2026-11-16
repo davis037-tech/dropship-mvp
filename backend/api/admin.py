@@ -127,8 +127,8 @@ def _apply_body(body: ProductBody, existing: dict | None) -> dict:
         raise ApiError(422, "pricing_not_configured", str(exc))
     data.update(costs)
     if body.use_recommended_price:
-        data["retail_price"] = costs["market_retail_price"]
-        merged["retail_price"] = costs["market_retail_price"]
+        data["retail_price"] = costs["recommended_price"]
+        merged["retail_price"] = costs["recommended_price"]
     if merged.get("status") == "active":
         if merged["retail_price"] <= 0:
             raise ApiError(422, "price_required", "Set a retail price before activating a product.")
@@ -239,7 +239,7 @@ def cj_import_products():
             "market_price": market_price, "status": "active", "retail_price": 0, "images": images, "specifications": []
         }
         costs = product_sync.compute_costs(ctx(), base)
-        retail = costs["market_retail_price"]
+        retail = costs["recommended_price"]
         if retail <= 0:
             continue
         pid = product_repo.create(ctx().db, {**base, **costs, "retail_price": retail})
@@ -415,9 +415,8 @@ def pricing_preview():
         costs = product_sync.compute_costs(ctx(), merged)
     except PricingError as exc:
         raise ApiError(422, "pricing_not_configured", str(exc))
-    price = major_to_minor(b.retail_price) if b.retail_price else costs["market_retail_price"]
+    price = major_to_minor(b.retail_price) if b.retail_price else costs["recommended_price"]
     return jsonify({"landed_cost": minor_to_major(costs["landed_cost"]),
                     "recommended_price": minor_to_major(costs["recommended_price"]),
-                    "market_retail_price": minor_to_major(costs["market_retail_price"]),
-                    "market_status": costs["market_status"],
+
                     "economics": pricing.economics_at_price(price, costs["landed_cost"], ctx().settings.pricing).as_admin_dict()})
