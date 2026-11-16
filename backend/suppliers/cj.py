@@ -35,9 +35,11 @@ class CJDropshippingAdapter(SupplierAdapter):
     BASE = "https://developers.cjdropshipping.com/api2.0/v1"
 
     def __init__(self, api_key: str = "", access_token: str = "", refresh_token: str = ""):
-        self._api_key = api_key
-        self._access_token = access_token
-        self._refresh_token = refresh_token
+        # Environment values can accidentally contain copied line breaks/spaces.
+        # Normalize them before putting secrets into HTTP headers.
+        self._api_key = (api_key or "").strip()
+        self._access_token = (access_token or "").strip()
+        self._refresh_token = (refresh_token or "").strip()
         self._access_expiry = 0.0
         self._refresh_expiry = 0.0
 
@@ -51,6 +53,11 @@ class CJDropshippingAdapter(SupplierAdapter):
         request = urllib.request.Request(url, data=body, method=method.upper())
         request.add_header("Content-Type", "application/json")
         for key, value in (headers or {}).items():
+            # Never allow newline characters into an HTTP header value.
+            # This also prevents a pasted Access Token + Refresh Token block
+            # from becoming an invalid/unsafe header.
+            if isinstance(value, str):
+                value = value.strip().splitlines()[0]
             request.add_header(key, value)
         try:
             with urllib.request.urlopen(request, timeout=20) as response:
@@ -91,8 +98,8 @@ class CJDropshippingAdapter(SupplierAdapter):
                 {"apiKey": self._api_key},
             ).get("data") or {}
 
-        self._access_token = data.get("accessToken", "")
-        self._refresh_token = data.get("refreshToken", self._refresh_token)
+        self._access_token = str(data.get("accessToken", "") or "").strip()
+        self._refresh_token = str(data.get("refreshToken", self._refresh_token) or "").strip()
         if not self._access_token:
             raise CJApiError("CJ did not return an access token")
 
