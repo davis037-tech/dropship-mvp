@@ -3,6 +3,7 @@ import { renderLayout } from '../components/layout.js';
 import { api, getCountries } from '../services/api.js';
 import { getCart, clearCart, getCountry, setCountry } from '../services/cart.js';
 import { countryName, deliveryText, money } from '../services/format.js';
+import { authApi, isLoggedIn } from '../services/customer.js';
 
 const field = (label, name, attrs = {}) => h('div', {}, h('label', { for: name }, label), h('input', { id: name, name, ...attrs }));
 
@@ -10,6 +11,7 @@ async function main() {
   renderLayout();
   const app = $('#app');
   const items = getCart();
+  if (!isLoggedIn()) { location.replace('/login?next=/checkout'); return; }
   if (!items.length) { mount(app, h('div', { class: 'container narrow' }, h('h1', {}, 'Checkout'), h('p', { class: 'muted' }, 'Your cart is empty.'), h('a', { class: 'btn btn-green', href: '/#shop' }, 'Shop')) ); return; }
   let countries = [];
   try { countries = await getCountries(); } catch (e) { mount(app, h('div', { class: 'container narrow' }, h('p', { class: 'notice notice-error' }, e.message))); return; }
@@ -29,7 +31,7 @@ async function main() {
     if (!country.value) { submit.disabled = true; return; }
     setCountry(country.value);
     try {
-      const q = await api('/api/checkout/quote', { method: 'POST', body: { items, country: country.value } });
+      const q = await authApi('/api/checkout/quote', { method: 'POST', body: { items, country: country.value } });
       const z = q.shipping;
       mount(summary, h('h2', { class: 'small-title' }, 'Order summary'),
         q.items.map((i) => h('div', { class: 'row' }, h('span', {}, `${i.name} × ${i.quantity}`), h('span', {}, money(i.line_total, q.currency)))),
@@ -47,7 +49,7 @@ async function main() {
     const f = new FormData(form);
     const val = (k) => (f.get(k) || '').toString().trim();
     try {
-      const res = await api('/api/checkout', { method: 'POST', body: {
+      const res = await authApi('/api/checkout', { method: 'POST', body: {
         items, country: val('country'),
         customer: { name: val('name'), email: val('email') },
         address: { line1: val('line1'), line2: val('line2') || null, city: val('city'), region: val('region') || null, postal_code: val('postal_code') },
