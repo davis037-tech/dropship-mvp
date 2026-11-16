@@ -97,6 +97,11 @@ def _private_page(template: str, title: str):
     return _render(template, _seo(title=f"{title} | {c.settings.store_name}", description=title, path=request.path, noindex=True))
 
 
+@bp.get("/login")
+def login():
+    return _private_page("login.html", "Customer login")
+
+
 @bp.get("/cart")
 def cart():
     return _private_page("cart.html", "Your cart")
