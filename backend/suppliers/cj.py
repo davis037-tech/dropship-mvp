@@ -144,25 +144,50 @@ class CJDropshippingAdapter(SupplierAdapter):
                 return data[key]
         return []
 
+    def get_variants(self, product_id: str) -> list[dict]:
+        query = urllib.parse.urlencode({"pid": product_id})
+        data = self._call("GET", f"/product/variant/query?{query}").get("data") or []
+        if isinstance(data, dict):
+            for key in ("content", "list", "records", "variants"):
+                if isinstance(data.get(key), list):
+                    return data[key]
+            return [data] if data.get("vid") else []
+        return data if isinstance(data, list) else []
+
+    def get_variant_stock(self, variant_id: str) -> int:
+        query = urllib.parse.urlencode({"vid": variant_id})
+        data = self._call("GET", f"/product/stock/queryByVid?{query}").get("data") or []
+        rows = data if isinstance(data, list) else [data]
+        total = 0
+        for row in rows:
+            if isinstance(row, dict):
+                total += _int(row.get("storageNum") or row.get("totalInventory") or row.get("inventory"))
+        return total
+
     def get_product(self, supplier_product_id: str) -> SupplierProduct:
         # CJ documents Product Query as GET /product/query?pid=...
         query = urllib.parse.urlencode({"pid": supplier_product_id})
         data = self._call("GET", f"/product/query?{query}").get("data") or {}
         product = data.get("content", data) if isinstance(data, dict) else {}
         variants = product.get("variants") or product.get("variantList") or []
+        if not variants:
+            variants = self.get_variants(str(supplier_product_id))
         variant = variants[0] if variants else {}
         price = _number(variant.get("variantSellPrice") or product.get("sellPrice"))
+        vid = str(variant.get("vid") or variant.get("variantId") or supplier_product_id)
         stock = _int(
             variant.get("variantAvailableInventory")
             or variant.get("variantStock")
             or product.get("availableInventory")
             or product.get("inventory")
         )
+        if stock <= 0 and vid != str(supplier_product_id):
+            stock = self.get_variant_stock(vid)
         images = tuple(product.get("productImageSet") or product.get("images") or ())
         if product.get("bigImage") and product["bigImage"] not in images:
             images = (product["bigImage"], *images)
         return SupplierProduct(
-            supplier_product_id=str(supplier_product_id),
+            supplier_product_id=vid,
             title=product.get("productNameEn") or product.get("productName") or product.get("name") or "",
             url=product.get("productUrl") or "",
             price_minor=round(price * 100),
