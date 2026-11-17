@@ -86,7 +86,15 @@ async function products() {
       h('td', {}, money(p.landed_cost, p.currency)), h('td', {}, p.economics ? `${p.economics.margin_percent}% (${p.economics.landed_multiple}× landed)` : '—'), h('td', {}, String(p.stock)),
       h('td', {}, badge(p.status, ['needs_review', 'unavailable']), p.review_reason ? h('div', { class: 'small muted' }, p.review_reason) : null),
       h('td', {}, p.last_synced_at ? new Date(p.last_synced_at).toLocaleString() : 'never'),
-      h('td', {}, h('a', { href: `#/products/${p.id}` }, 'Edit'))))));
+      h('td', {},
+        h('a', { href: `#/products/${p.id}` }, 'Edit'), ' ',
+        h('button', { class: 'btn btn-danger btn-sm', type: 'button', onclick: async () => {
+          if (!confirm(\`Delete product "${p.name}"? It will be removed from the storefront.\`)) return;
+          try {
+            await call(\`/api/admin/products/${p.id}\`, { method: 'DELETE' });
+            await products();
+          } catch (e) { mount(out, notice('error', e.message)); }
+        } }, 'Delete'))))));
 }
 
 const specsToText = (s) => (s || []).map((x) => `${x.label}: ${x.value}`).join('\n');
