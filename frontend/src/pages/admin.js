@@ -63,11 +63,13 @@ async function products() {
           try {
             // Import exactly the rows already returned by CJ instead of asking CJ
             // for the same catalog page again.
-            const imported = await call('/api/admin/products/import-cj', { method: 'POST', body: { products: r.products } });
-            mount(cjOut, imported.errors && imported.errors.length ? notice('error', `Imported ${imported.count} products. ${imported.errors.join(' | ')}`) : notice('ok', `Imported ${imported.count} CJ products. The storefront/database now uses the saved product records.`));
-            setTimeout(products, 1000);
+            const imported = await call('/api/admin/products/import-cj', { method: 'POST', body: { products: [p] } });
+            mount(cjOut, imported.errors && imported.errors.length
+              ? notice('error', `Imported ${imported.count} product(s). ${imported.errors.join(' | ')}`)
+              : notice('ok', imported.count ? 'Product imported successfully. Refreshing the product list…' : 'CJ returned no usable product data for this item.'));
+            setTimeout(products, 700);
           } catch (e) { mount(cjOut, notice('error', e.message)); }
-        } }, 'Import results'))))) : h('p', { class: 'muted' }, 'No CJ products found.'));
+        } }, 'Import product'))))) : h('p', { class: 'muted' }, 'No CJ products found.'));
     } catch (e) { mount(cjOut, notice('error', e.message)); }
   };
   mount(app, h('h1', {}, 'Products'), nav('#/products'), out,
