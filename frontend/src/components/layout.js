@@ -13,18 +13,18 @@ export async function renderLayout() {
     const link = h('a', { class: 'cart-link', href: '/cart', 'aria-label': 'Cart' }, 'Cart ', count);
     const customer = getCustomer();
     const account = isLoggedIn()
-      ? h('button', { class: 'btn btn-ghost btn-sm', type: 'button', onclick: () => { clearSession(); location.reload(); } }, customer && customer.name ? `Log out (${customer.name})` : 'Log out')
-      : h('a', { class: 'btn btn-ghost btn-sm', href: '/login' }, 'Log in');
+      ? h('button', { class: 'nav-account', type: 'button', onclick: () => { clearSession(); location.reload(); } }, customer && customer.name ? `Log out (${customer.name})` : 'Log out')
+      : h('a', { class: 'nav-account', href: '/login' }, 'Log in');
     const nav = h('nav', { class: 'nav', id: 'nav', 'aria-label': 'Main' },
       h('a', { href: '/#shop' }, 'Shop'), h('a', { href: '/#how-it-works' }, 'How It Works'),
-      h('a', { href: '/#benefits' }, 'Benefits'), h('a', { href: '/#faq' }, 'FAQ'));
+      h('a', { href: '/#benefits' }, 'Benefits'), h('a', { href: '/#faq' }, 'FAQ'), account);
     const brand = h('a', { class: 'brand', href: '/' }, cfg.store_name);
     brand.insertAdjacentHTML('afterbegin', LOGO);
     const btn = h('button', { class: 'menu-btn', type: 'button', 'aria-expanded': 'false', 'aria-controls': 'nav',
       onclick: () => { const open = nav.classList.toggle('open'); btn.setAttribute('aria-expanded', String(open)); } }, 'Menu');
     nav.addEventListener('click', (e) => { if (e.target.tagName === 'A') nav.classList.remove('open'); });
     header.className = 'site-header';
-    header.append(h('div', { class: 'container bar' }, brand, nav, link, account,
+    header.append(h('div', { class: 'container bar' }, brand, nav, link,
       h('a', { class: 'btn btn-primary btn-sm header-cta', href: '/#shop' }, 'Shop Now'), btn));
     document.addEventListener('cart:change', () => { count.textContent = String(cartCount()); });
   }
