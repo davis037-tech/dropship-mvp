@@ -21,7 +21,9 @@ export async function renderLayout() {
     const brand = h('a', { class: 'brand', href: '/' }, cfg.store_name);
     brand.insertAdjacentHTML('afterbegin', LOGO);
     const btn = h('button', { class: 'menu-btn', type: 'button', 'aria-expanded': 'false', 'aria-controls': 'nav',
-      onclick: () => { const open = nav.classList.toggle('open'); btn.setAttribute('aria-expanded', String(open)); } }, 'Menu');
+      onclick: () => { const open = nav.classList.toggle('open'); btn.setAttribute('aria-expanded', String(open)); btn.classList.toggle('is-open', open); } },
+      h('span', { class: 'hamburger-lines', 'aria-hidden': 'true' }, h('span', {}), h('span', {}), h('span', {})),
+      h('span', { class: 'sr-only' }, 'Menu'));
     nav.addEventListener('click', (e) => { if (e.target.tagName === 'A') nav.classList.remove('open'); });
     header.className = 'site-header';
     header.append(h('div', { class: 'container bar' }, brand, nav, link,
