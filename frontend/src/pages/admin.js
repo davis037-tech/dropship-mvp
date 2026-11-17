@@ -89,9 +89,9 @@ async function products() {
       h('td', {},
         h('a', { href: `#/products/${p.id}` }, 'Edit'), ' ',
         h('button', { class: 'btn btn-danger btn-sm', type: 'button', onclick: async () => {
-          if (!confirm(\`Delete product "${p.name}"? It will be removed from the storefront.\`)) return;
+          if (!confirm(`Delete product "${p.name}"? It will be removed from the storefront.`)) return;
           try {
-            await call(\`/api/admin/products/${p.id}\`, { method: 'DELETE' });
+            await call(`/api/admin/products/${p.id}`, { method: 'DELETE' });
             await products();
           } catch (e) { mount(out, notice('error', e.message)); }
         } }, 'Delete'))))));
