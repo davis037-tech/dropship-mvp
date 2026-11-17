@@ -215,11 +215,11 @@ def cj_import_products():
             continue
 
         sid = str(detail.supplier_product_id or catalog_id).strip()
-        // CJ's search result already contains usable price/stock. The detail
-        // endpoint is still the source of the real variant ID, but some CJ
-        // products return incomplete price/inventory fields there. Fall back
-        // to the already-fetched catalog values instead of silently dropping
-        // an otherwise importable product.
+        # CJ's search result already contains usable price/stock. The detail
+        # endpoint is still the source of the real variant ID, but some CJ
+        # products return incomplete price/inventory fields there. Fall back
+        # to the already-fetched catalog values instead of silently dropping
+        # an otherwise importable product.
         price_minor = int(detail.price_minor or 0)
         if price_minor <= 0:
             price_minor = round(_cj_number(row.get("sellPrice") or row.get("nowPrice") or row.get("discountPrice") or row.get("price")) * 100)
