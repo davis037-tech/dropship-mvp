@@ -258,3 +258,5 @@ async function route() {
 logoutBtn.addEventListener('click', () => { setToken(''); location.hash = '#/login'; route(); });
 window.addEventListener('hashchange', route);
 route();
+
+// Admin UI cache refresh marker.
