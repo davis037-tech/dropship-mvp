@@ -199,10 +199,8 @@ def cj_import_products():
     created = []
     errors = []
     for row in rows[:5]:
-        catalog_id = str(row.get("pid") or row.get("productId") or row.get("id") or "").strip()
+        catalog_id = str(row.get("pid") or row.get("productId") or row.get("id") or row.get("supplier_product_id") or "").strip()
         if not catalog_id:
-            continue
-        if ctx().db.fetch_one("SELECT id FROM products WHERE supplier_platform = 'cj' AND supplier_product_id = ?", [catalog_id]):
             continue
         name = str(row.get("productNameEn") or row.get("nameEn") or row.get("productName") or row.get("name") or "").strip()
         if not name:
@@ -215,6 +213,8 @@ def cj_import_products():
             continue
 
         sid = str(detail.supplier_product_id or catalog_id).strip()
+        if ctx().db.fetch_one("SELECT id FROM products WHERE supplier_platform = 'cj' AND supplier_product_id = ?", [sid]):
+            continue
         # CJ's search result already contains usable price/stock. The detail
         # endpoint is still the source of the real variant ID, but some CJ
         # products return incomplete price/inventory fields there. Fall back
@@ -222,11 +222,11 @@ def cj_import_products():
         # an otherwise importable product.
         price_minor = int(detail.price_minor or 0)
         if price_minor <= 0:
-            price_minor = round(_cj_number(row.get("sellPrice") or row.get("nowPrice") or row.get("discountPrice") or row.get("price")) * 100)
+            price_minor = round(_cj_number(row.get("sellPrice") or row.get("nowPrice") or row.get("discountPrice") or row.get("price") or row.get("supplier_cost")) * 100)
 
         stock = int(detail.stock or 0)
         if stock <= 0:
-            stock = int(float(row.get("inventory") or row.get("warehouseInventoryNum") or row.get("totalVerifiedInventory") or row.get("availableInventory") or 0))
+            stock = int(float(row.get("inventory") or row.get("warehouseInventoryNum") or row.get("totalVerifiedInventory") or row.get("availableInventory") or row.get("stock") or 0))
 
         if price_minor <= 0 or stock <= 0:
             errors.append(f"{name}: CJ returned no usable price/stock")
