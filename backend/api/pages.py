@@ -119,7 +119,10 @@ def order():
 
 @bp.get("/admin")
 def admin():
-    return _private_page("admin/index.html", "Admin")
+    resp = _private_page("admin/index.html", "Admin")
+    # Admin HTML must never be browser-cached while the admin bundle is changing.
+    resp.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    return resp
 
 
 @bp.get("/src/<path:filename>")
